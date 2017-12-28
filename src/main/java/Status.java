@@ -1,15 +1,20 @@
+import com.jogamp.opengl.GL2ES2;
 import com.jogamp.opengl.util.GLBuffers;
 import processing.core.PApplet;
+import processing.core.PImage;
 import processing.core.PVector;
+import processing.opengl.PGraphicsOpenGL;
+import processing.opengl.PJOGL;
+import processing.opengl.Texture;
 import vr.*;
 
 import java.nio.FloatBuffer;
 import java.nio.IntBuffer;
-import java.util.Arrays;
+import java.util.HashMap;
 
 import static vr.VR.ETrackedDeviceClass.TrackedDeviceClass_Controller;
-import static vr.VR.ETrackedDeviceClass.TrackedDeviceClass_GenericTracker;
-import static vr.VR.ETrackedDeviceClass.TrackedDeviceClass_TrackingReference;
+import static vr.VR.ETrackedDeviceProperty.*;
+import static vr.VR.ETrackedDeviceProperty.Prop_NamedIconPathDeviceAlertLow_String;
 import static vr.VR.ETrackingUniverseOrigin.TrackingUniverseStanding;
 import static vr.VR.EVREventType.VREvent_DriverRequestedQuit;
 import static vr.VR.EVREventType.VREvent_Quit;
@@ -26,10 +31,11 @@ public class Status extends PApplet {
     HmdQuad_t playAreaRect = new HmdQuad_t();
 
     int woldScale = 200;
+    private String driverPath;
 
     @Override
     public void settings() {
-        size(1280, 720);
+        size(1280, 720, P3D);
     }
 
     private static IVRSystem hmd;
@@ -64,6 +70,8 @@ public class Status extends PApplet {
         getTrackingPosition();
 
 
+        drawToHeadset();
+
         // process events
         VREvent_t event = new VREvent_t();
         hmd.PollNextEvent.apply(event, event.size());
@@ -75,6 +83,42 @@ public class Status extends PApplet {
                 exit();
                 break;
         }
+    }
+
+    private final PGraphicsOpenGL[] views = new PGraphicsOpenGL[2];
+
+
+    private void drawToHeadset() {
+        PJOGL pgl = (PJOGL) beginPGL();
+        GL2ES2 gl = pgl.gl.getGL3();
+
+        final Texture eyeTextures[] = {
+                new Texture((PGraphicsOpenGL) g),
+                new Texture((PGraphicsOpenGL) g)};
+//        createGraphics(w, h, P3D);
+
+        endPGL();
+        /*
+
+        // opengl texture
+// The framebuffer, which regroups 0, 1, or more textures, and 0 or 1 depth buffer.
+        IntBuffer FramebufferName = GLBuffers.newDirectIntBuffer(0);
+        GL.glGenFramebuffers(1, FramebufferName);
+        glBindFramebuffer(GL_FRAMEBUFFER, FramebufferName);
+
+
+        PGraphics2D.
+
+
+
+        Texture_t textureLeft = new Texture_t(, TextureType_OpenGL, ColorSpace_Auto);
+        Texture_t textureRight;
+        compositor.Submit.apply(LEFT, textureLeft);
+        compositor.Submit.apply(RIGHT, textureRight);
+*/
+
+        //Set the OpenGL texture geometry
+        VRTextureBounds_t GLBounds = new VRTextureBounds_t(0, 1, 1, 0);
     }
 
     private boolean initVr() {
@@ -98,9 +142,41 @@ public class Status extends PApplet {
 
             isReady = true;
 
+            driverPath = VR.VR_RuntimePath() + "drivers\\";
+            loadIcons();
+
             getChaperoneData();
         }
         return true;
+    }
+
+    HashMap<Integer, PImage> icons = new HashMap<>();
+
+    private void loadIcons() {
+        // TODO add to on device connected event
+        for (int trackedDevice = k_unTrackedDeviceIndex_Hmd;
+             trackedDevice < k_unMaxTrackedDeviceCount;
+             trackedDevice++) {
+            //If the device is not connected, pass.
+            if (!hmd.IsTrackedDeviceConnected.apply(trackedDevice))
+                continue;
+            System.out.println("--------------------------" + trackedDevice + "-------------------------------------");
+            String driver = hmd.GetTrackedDevicePropertyString(trackedDevice, Prop_TrackingSystemName_String, errorBuffer);
+            System.out.println(driver);
+
+
+            System.out.println(hmd.GetTrackedDevicePropertyString(trackedDevice, Prop_NamedIconPathDeviceOff_String, errorBuffer));
+            System.out.println(hmd.GetTrackedDevicePropertyString(trackedDevice, Prop_NamedIconPathDeviceSearching_String, errorBuffer));
+            System.out.println(hmd.GetTrackedDevicePropertyString(trackedDevice, Prop_NamedIconPathDeviceSearchingAlert_String, errorBuffer));
+            String ready = hmd.GetTrackedDevicePropertyString(trackedDevice, Prop_NamedIconPathDeviceReady_String, errorBuffer);
+
+            icons.put(trackedDevice, loadImage(driverPath + driver + "\\resources" + ready.replaceAll("\\{\\w*}","")));
+            System.out.println(ready);
+            System.out.println(hmd.GetTrackedDevicePropertyString(trackedDevice, Prop_NamedIconPathDeviceReadyAlert_String, errorBuffer));
+            System.out.println(hmd.GetTrackedDevicePropertyString(trackedDevice, Prop_NamedIconPathDeviceNotReady_String, errorBuffer));
+            System.out.println(hmd.GetTrackedDevicePropertyString(trackedDevice, Prop_NamedIconPathDeviceStandby_String, errorBuffer));
+            System.out.println(hmd.GetTrackedDevicePropertyString(trackedDevice, Prop_NamedIconPathDeviceAlertLow_String, errorBuffer));
+        }
     }
 
     private void getChaperoneData() {
@@ -112,24 +188,6 @@ public class Status extends PApplet {
 
         chaperone.GetPlayAreaRect.apply(playAreaRect);
 
-    }
-
-    private void connectedDevices() {
-        //Iterate through the possible trackedDeviceIndexes
-        for (int trackedDevice = k_unTrackedDeviceIndex_Hmd + 1;
-             trackedDevice < k_unMaxTrackedDeviceCount;
-             trackedDevice++) {
-            //If the device is not connected, pass.
-            if (!hmd.IsTrackedDeviceConnected.apply(trackedDevice))
-                continue;
-            //If the device is not recognized as a controller, pass
-            if (hmd.GetTrackedDeviceClass.apply(trackedDevice) == TrackedDeviceClass_Controller)
-                System.out.println("Controller: " + trackedDevice);
-            if (hmd.GetTrackedDeviceClass.apply(trackedDevice) == TrackedDeviceClass_GenericTracker)
-                System.out.println("GenericTracker: " + trackedDevice);
-            if (hmd.GetTrackedDeviceClass.apply(trackedDevice) == TrackedDeviceClass_TrackingReference)
-                System.out.println("Tracker: " + trackedDevice);
-        }
     }
 
     @Override
@@ -169,6 +227,7 @@ public class Status extends PApplet {
 
                     HmdMatrix34_t mat = trackedDevicePose[0].mDeviceToAbsoluteTracking;
                     point(width / 2 + mat.m[3] * woldScale, height / 2 + mat.m[11] * woldScale); // hmd working
+                    image(icons.get(unDevice), width / 2 + mat.m[3] * woldScale, height / 2 + mat.m[11] * woldScale);
                     break;
 
                 case TrackedDeviceClass_Controller:
@@ -177,6 +236,7 @@ public class Status extends PApplet {
                     hmd.GetControllerStateWithPose.apply(TrackingUniverseStanding, unDevice, controllerState, controllerState.size(), pose);
                     mat = pose.mDeviceToAbsoluteTracking;
                     point(width / 2 + mat.m[3] * woldScale, height / 2 + mat.m[11] * woldScale); // hmd working
+                    image(icons.get(unDevice), width / 2 + mat.m[3] * woldScale, height / 2 + mat.m[11] * woldScale);
 
                     break;
             }
