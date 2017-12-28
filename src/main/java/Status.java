@@ -14,8 +14,7 @@ import static vr.VR.ETrackedDeviceClass.TrackedDeviceClass_Controller;
 import static vr.VR.ETrackedDeviceProperty.*;
 import static vr.VR.ETrackedDeviceProperty.Prop_NamedIconPathDeviceAlertLow_String;
 import static vr.VR.ETrackingUniverseOrigin.TrackingUniverseStanding;
-import static vr.VR.EVREventType.VREvent_DriverRequestedQuit;
-import static vr.VR.EVREventType.VREvent_Quit;
+import static vr.VR.EVREventType.*;
 import static vr.VR.k_unMaxTrackedDeviceCount;
 import static vr.VR.k_unTrackedDeviceIndex_Hmd;
 
@@ -41,6 +40,8 @@ public class Status extends PApplet {
 
     @Override
     public void setup() {
+        frameRate(90);
+
         background(0);
         fill(255, 255, 255);
         color(255, 255, 255);
@@ -53,6 +54,7 @@ public class Status extends PApplet {
         if (!initVr()) return;
 
         background(0);
+        text("FPS: " + frameRate, width - textWidth("FPS: 90 ") - 10, 20);
 
         text("PlayArea: " + playArea.x + " m x " + playArea.y + " m", 10, 20);
 
@@ -65,6 +67,8 @@ public class Status extends PApplet {
                     height / 2 + playAreaRect.vCorners[(i + 1) % 4].v[2] * woldScale);
         }
 
+
+        getDevices();
         getTrackingPosition();
 
 
@@ -72,14 +76,36 @@ public class Status extends PApplet {
 
         // process events
         VREvent_t event = new VREvent_t();
-        hmd.PollNextEvent.apply(event, event.size());
+        while (hmd.PollNextEvent.apply(event, event.size())) {
 
-        switch (event.eventType) {
-            //Handle quiting the app from Steam
-            case VREvent_DriverRequestedQuit:
-            case VREvent_Quit:
-                exit();
-                break;
+            switch (event.eventType) {
+                //Handle quiting the app from Steam
+                case VREvent_DriverRequestedQuit:
+                case VREvent_Quit:
+                    exit();
+                    break;
+
+                case VREvent_ChaperoneDataHasChanged:
+                case VREvent_ChaperoneUniverseHasChanged:
+                case VREvent_ChaperoneTempDataHasChanged:
+                case VREvent_ChaperoneSettingsHaveChanged:
+                    getChaperoneData();
+                    break;
+            }
+        }
+    }
+
+    private void getDevices() {
+        TrackedDevicePose_t[] trackedDevicePose = new TrackedDevicePose_t[k_unMaxTrackedDeviceCount];
+        hmd.GetDeviceToAbsoluteTrackingPose.apply(TrackingUniverseStanding, 0, trackedDevicePose, k_unMaxTrackedDeviceCount);//only hmd
+
+        for (int unDevice = 0; unDevice < k_unMaxTrackedDeviceCount; unDevice++) {
+
+            PImage img = icons.get(unDevice);
+            if (img != null) {
+                image(img, 50, 50 + unDevice * (img.height + 30));
+                text(hmd.GetTrackedDevicePropertyString(unDevice, Prop_ModelNumber_String, errorBuffer), 20, 50 + unDevice * (img.height + 30) + img.height);
+            }
         }
     }
 
@@ -178,6 +204,7 @@ public class Status extends PApplet {
     }
 
     private void getChaperoneData() {
+        System.out.println("Getting Chaperone data");
         FloatBuffer w = GLBuffers.newDirectFloatBuffer(1);
         FloatBuffer h = GLBuffers.newDirectFloatBuffer(1);
         chaperone.GetPlayAreaSize.apply(w, h);
@@ -199,23 +226,24 @@ public class Status extends PApplet {
     }
 
     /**
-     * Gives rotation matrix around y axis
+     * Converts {@link HmdMatrix34_t} to {@link PMatrix3D}
      *
-     * @param mat
-     * @return
+     * @param mat OpenVR matrix
+     * @return Processing matrix
      */
-    PMatrix3D GetRotation(HmdMatrix34_t mat) {
-        PMatrix3D q = new PMatrix3D(
-                mat.m[0], mat.m[1], mat.m[2], 0,
-                mat.m[4], mat.m[5], mat.m[6], 0,
-                mat.m[8], mat.m[9], mat.m[10], 0,
+    public static PMatrix3D GetMatrix(HmdMatrix34_t mat) {
+        return new PMatrix3D(
+                mat.m[0], mat.m[1], mat.m[2], mat.m[3],
+                mat.m[4], mat.m[5], mat.m[6], mat.m[7],
+                mat.m[8], mat.m[9], mat.m[10], mat.m[11],
                 0, 0, 0, 0
         );
-        return q;
     }
 
-    // Get the vector representing the position
-    public PVector GetPosition(HmdMatrix34_t matrix) {
+    /**
+     * Get the vector representing the position
+     */
+    public static PVector GetPosition(HmdMatrix34_t matrix) {
         PVector vector = new PVector();
 
         vector.x = matrix.get(0, 3);
@@ -230,12 +258,14 @@ public class Status extends PApplet {
      */
     public void getTrackingPosition() {
 
+        TrackedDevicePose_t[] trackedDevicePose = new TrackedDevicePose_t[k_unMaxTrackedDeviceCount];
+        hmd.GetDeviceToAbsoluteTrackingPose.apply(TrackingUniverseStanding, 0, trackedDevicePose, k_unMaxTrackedDeviceCount);//only hmd
+
         for (int unDevice = 0; unDevice < k_unMaxTrackedDeviceCount; unDevice++) {
             // if not connected just skip the rest of the routine
             if (!hmd.IsTrackedDeviceConnected.apply(unDevice))
                 continue;
 
-            TrackedDevicePose_t[] trackedDevicePose = new TrackedDevicePose_t[1];
 
             if (hmd.IsInputFocusCapturedByAnotherProcess.apply()) {
                 System.out.println("Input Focus by Another Process");
@@ -250,11 +280,11 @@ public class Status extends PApplet {
                     // print stuff for the HMD here, see controller stuff in next case block
 
                     // get pose relative to the safe bounds defined by the user
-                    hmd.GetDeviceToAbsoluteTrackingPose.apply(TrackingUniverseStanding, 0, trackedDevicePose, 1);
 
-                    mat = trackedDevicePose[0].mDeviceToAbsoluteTracking;
+                    mat = trackedDevicePose[unDevice].mDeviceToAbsoluteTracking;
                     break;
 
+                default:
                 case TrackedDeviceClass_Controller:
                     VRControllerState_t controllerState = new VRControllerState_t();
                     TrackedDevicePose_t pose = new TrackedDevicePose_t();
@@ -266,7 +296,7 @@ public class Status extends PApplet {
 
             if (mat != null) {
                 PVector pos = GetPosition(mat);
-                PMatrix3D rot = GetRotation(mat);
+                PMatrix3D rot = GetMatrix(mat);
                 float angle = (float) Math.atan2(-rot.m20, Math.sqrt(rot.m21 * rot.m21 + rot.m22 * rot.m22));
 
                 point(width / 2 + pos.x * woldScale, height / 2 + pos.z * woldScale); // hmd working
