@@ -1,8 +1,6 @@
 import com.jogamp.opengl.GL2ES2;
 import com.jogamp.opengl.util.GLBuffers;
-import processing.core.PApplet;
-import processing.core.PImage;
-import processing.core.PVector;
+import processing.core.*;
 import processing.opengl.PGraphicsOpenGL;
 import processing.opengl.PJOGL;
 import processing.opengl.Texture;
@@ -170,7 +168,7 @@ public class Status extends PApplet {
             System.out.println(hmd.GetTrackedDevicePropertyString(trackedDevice, Prop_NamedIconPathDeviceSearchingAlert_String, errorBuffer));
             String ready = hmd.GetTrackedDevicePropertyString(trackedDevice, Prop_NamedIconPathDeviceReady_String, errorBuffer);
 
-            icons.put(trackedDevice, loadImage(driverPath + driver + "\\resources" + ready.replaceAll("\\{\\w*}","")));
+            icons.put(trackedDevice, loadImage(driverPath + driver + "\\resources" + ready.replaceAll("\\{\\w*}", "")));
             System.out.println(ready);
             System.out.println(hmd.GetTrackedDevicePropertyString(trackedDevice, Prop_NamedIconPathDeviceReadyAlert_String, errorBuffer));
             System.out.println(hmd.GetTrackedDevicePropertyString(trackedDevice, Prop_NamedIconPathDeviceNotReady_String, errorBuffer));
@@ -201,6 +199,33 @@ public class Status extends PApplet {
     }
 
     /**
+     * Gives rotation matrix around y axis
+     *
+     * @param mat
+     * @return
+     */
+    PMatrix3D GetRotation(HmdMatrix34_t mat) {
+        PMatrix3D q = new PMatrix3D(
+                mat.m[0], mat.m[1], mat.m[2], 0,
+                mat.m[4], mat.m[5], mat.m[6], 0,
+                mat.m[8], mat.m[9], mat.m[10], 0,
+                0, 0, 0, 0
+        );
+        return q;
+    }
+
+    // Get the vector representing the position
+    public PVector GetPosition(HmdMatrix34_t matrix) {
+        PVector vector = new PVector();
+
+        vector.x = matrix.get(0, 3);
+        vector.y = matrix.get(1, 3);
+        vector.z = matrix.get(2, 3);
+
+        return vector;
+    }
+
+    /**
      * https://github.com/Omnifinity/OpenVR-Tracking-Example/blob/master/HTC%20Lighthouse%20Tracking%20Example/LighthouseTracking.cpp
      */
     public void getTrackingPosition() {
@@ -216,6 +241,8 @@ public class Status extends PApplet {
                 System.out.println("Input Focus by Another Process");
             }
 
+            HmdMatrix34_t mat = null;
+
             // Get what type of device it is and work with its data
             int trackedDeviceClass = hmd.GetTrackedDeviceClass.apply(unDevice);
             switch (trackedDeviceClass) {
@@ -225,9 +252,7 @@ public class Status extends PApplet {
                     // get pose relative to the safe bounds defined by the user
                     hmd.GetDeviceToAbsoluteTrackingPose.apply(TrackingUniverseStanding, 0, trackedDevicePose, 1);
 
-                    HmdMatrix34_t mat = trackedDevicePose[0].mDeviceToAbsoluteTracking;
-                    point(width / 2 + mat.m[3] * woldScale, height / 2 + mat.m[11] * woldScale); // hmd working
-                    image(icons.get(unDevice), width / 2 + mat.m[3] * woldScale, height / 2 + mat.m[11] * woldScale);
+                    mat = trackedDevicePose[0].mDeviceToAbsoluteTracking;
                     break;
 
                 case TrackedDeviceClass_Controller:
@@ -235,10 +260,27 @@ public class Status extends PApplet {
                     TrackedDevicePose_t pose = new TrackedDevicePose_t();
                     hmd.GetControllerStateWithPose.apply(TrackingUniverseStanding, unDevice, controllerState, controllerState.size(), pose);
                     mat = pose.mDeviceToAbsoluteTracking;
-                    point(width / 2 + mat.m[3] * woldScale, height / 2 + mat.m[11] * woldScale); // hmd working
-                    image(icons.get(unDevice), width / 2 + mat.m[3] * woldScale, height / 2 + mat.m[11] * woldScale);
 
                     break;
+            }
+
+            if (mat != null) {
+                PVector pos = GetPosition(mat);
+                PMatrix3D rot = GetRotation(mat);
+                float angle = (float) Math.atan2(-rot.m20, Math.sqrt(rot.m21 * rot.m21 + rot.m22 * rot.m22));
+
+                point(width / 2 + pos.x * woldScale, height / 2 + pos.z * woldScale); // hmd working
+
+                pushMatrix();
+
+                translate(width / 2 + pos.x * woldScale, height / 2 + pos.z * woldScale);
+                rotateZ(-angle);
+
+                PImage img = icons.get(unDevice);
+                imageMode(CENTER);
+                image(img, 0, 0);
+
+                popMatrix();
             }
         }
     }
