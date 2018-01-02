@@ -306,7 +306,7 @@ public class Status extends PApplet {
                 translate(width / 2 + pos.x * woldScale, height / 2 + pos.z * woldScale);
                 rotateZ(-angle);
 
-                PImage img = icons.get(unDevice);
+                PImage img = icons.get(unDevice); // FIXME crashes when controller paired while running
                 imageMode(CENTER);
                 image(img, 0, 0);
 
